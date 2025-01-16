@@ -1,0 +1,21 @@
+name: Build sdist from latest
+
+on:
+  push:
+    branches:
+     - laikulo-devel
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: build x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3.5.2
+      - name: Build
+        uses: ./.github/actions/klippy-build
+      - name: Upload
+        uses: actions/upload-artifact@v3.1.2
+        with: 
+          path: dist/*

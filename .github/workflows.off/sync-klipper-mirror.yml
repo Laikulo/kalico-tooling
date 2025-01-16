@@ -1,0 +1,119 @@
+name: Klipper fork sync
+
+on:
+  schedule:
+  - cron: "0 */3 * * ?"
+  workflow_dispatch:
+
+jobs:
+  sync_repo:
+    runs-on: ubuntu-latest
+    outputs:
+      DID_REBASE: ${{ steps.check_if_head_present.outputs.REF_IS_IN_BRANCH == 'false' }}
+    steps:
+      - name: Generate token
+        id: generate_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_PRIVKEY }}
+          owner: Laikulo
+          repositories: "klipper"
+          
+      - name: Sync klipper fork master branch
+        env:
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+        run: gh repo sync Laikulo/klipper -b master
+        
+      - name: Get current upstream head
+        id: get_upstream_head
+        env:
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+        run: |
+          echo "upstream_head=$(git ls-remote https://github.com/Klipper3d/klipper.git master | cut -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout modified workbranch
+        uses: actions/checkout@v4
+        with:
+          repository: 'Laikulo/klipper'
+          ref: 'laikulo-devel'
+          token: ${{ steps.generate_token.outputs.token }}
+          path: klipper
+          fetch-depth: 0
+          
+      - name: Check if upstream head is in forked work branch
+        id: check_if_head_present
+        env:
+          REF_TO_FIND: ${{ steps.get_upstream_head.outputs.upstream_head }}
+        run: |
+          cd "$GITHUB_WORKSPACE/klipper"
+          branch_list="$(git branch --contains "$REF_TO_FIND" laikulo-devel 2>/dev/null)"
+          if [[ $branch_list ]]; then
+            RETVAL=true
+          else
+            RETVAL=false
+          fi
+          echo "REF_IS_IN_BRANCH=${RETVAL}" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Rebase laikulo branch
+        if: ${{ steps.check_if_head_present.outputs.REF_IS_IN_BRANCH == 'false' }}
+        run: |
+          cd "$GITHUB_WORKSPACE/klipper"
+          git config user.name "Klippy-Tools-Bot"
+          git config user.email "aaron@haun.guru"
+          git fetch https://github.com/Klipper3d/klipper.git master
+          git rebase FETCH_HEAD
+
+      - name: Push rebased branch back
+        if: ${{ steps.check_if_head_present.outputs.REF_IS_IN_BRANCH == 'false' }}
+        run: |
+          cd "$GITHUB_WORKSPACE/klipper"
+          git push -f
+
+  trigger_repogen:
+    needs:
+      - sync_repo
+    if: ${{ needs.sync_repo.outputs.DID_REBASE == 'true' }}
+    uses: ./.github/workflows/generate-repo.yml
+    secrets: inherit
+
+  trigger_factory:
+    runs-on: ubuntu-latest
+    needs:
+      - sync_repo
+      - trigger_repogen
+    if: ${{ needs.sync_repo.outputs.DID_REBASE == 'true' }}
+    steps:
+      - name: Generate token
+        id: generate_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_PRIVKEY }}
+          owner: Laikulo
+          repositories: "Klipper-firmware"
+      - name: Get latest head of klipper fork
+        id: get_klipper_fork
+        run: |
+          tee -a <<<"KLIPPER_FORK_HEAD=$(git ls-remote https://github.com/Laikulo/klipper.git laikulo-devel | cut -f1)" "$GITHUB_OUTPUT"
+      - name: Trigger factory
+        env:
+          KLIPPER_FORK_HEAD: ${{ steps.get_klipper_fork.outputs.KLIPPER_FORK_HEAD }}
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
+          KLIPPY_VERSION: ${{ needs.trigger_repogen.outputs.klippy_version }}
+        run: |
+          gh workflow run --repo Laikulo/Klipper-firmware docker-publish-factory.yml -f klipperVer="$KLIPPER_FORK_HEAD" -f klipperRepo="https://github.com/Laikulo/klipper.git" -f tagName="${KLIPPY_VERSION}"
+          sleep 4
+          RUN_NUMBER="$(gh run --repo Laikulo/klipper-firmware list -e workflow_dispatch --limit 1 -w docker-publish-factory.yml --json databaseId --template '{{ printf "%.0f" ((index . 0).databaseId) }}')"
+          gh run --repo Laikulo/Klipper-firmware watch "$RUN_NUMBER"
+      - name: Trigger firmware builds
+        env:
+          KLIPPER_FORK_HEAD: ${{ steps.get_klipper_fork.outputs.KLIPPER_FORK_HEAD }}
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
+          KLIPPY_VERSION: ${{ needs.trigger_repogen.outputs.klippy_version }}
+        run: |
+          gh workflow run --repo Laikulo/Klipper-firmware factory-all.yml -f factoryTag="${KLIPPY_VERSION}"
+          sleep 4
+          RUN_NUMBER="$(gh run --repo Laikulo/klipper-firmware list -e workflow_dispatch --limit 1 -w factory-all.yml --json databaseId --template '{{ printf "%.0f" ((index . 0).databaseId) }}')"
+          gh run --repo Laikulo/Klipper-firmware watch "$RUN_NUMBER"
+

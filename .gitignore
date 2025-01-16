@@ -1,0 +1,16 @@
+!klippy/.gitkeep
+klippy/
+!hub-ctrl/.gitkeep
+hub-ctrl/
+*.egg-info/
+dist/
+venv/
+pub/
+
+*.swp
+upstream-requirements.txt
+/klipper-*.tar.gz
+/testcases/
+/test_klippy.py
+
+/upstream/
