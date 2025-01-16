@@ -3,10 +3,10 @@ requires = ["setuptools>=63.0", "cffi", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "klipper-klippy-l"
+name = "kalico-klippy"
 license.text = "GPL-3.0-only"
 readme = "README-py.md"
-description = "Klipper's host daemon - Unofficial repackage, includes patches"
+description = "Kalico's host daemon - Unofficial repackage, includes patches"
 dependencies= [
         "cffi==1.15.1",
         "pyserial==3.4",
@@ -25,11 +25,11 @@ resonanceTest = [
 ]
 
 [project.urls]
-homepage = "https://github.com/laikulo/klippy"
+homepage = "https://github.com/laikulo/kalico"
 
 [project.scripts]
-klipper-klippy = "klippy.klippy:main"
-klipper_klippy = "klippy.klippy:main"
+kalico-klippy = "klippy.klippy:main"
+kalico_klippy = "klippy.klippy:main"
 
 [tool.setuptools.dynamic]
 version = { file = ".py_version" }

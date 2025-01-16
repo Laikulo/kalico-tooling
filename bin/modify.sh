@@ -4,6 +4,7 @@ klippy_dir=${1:-klippy}
 ./bin/make-package.py "$klippy_dir"
 pushd "$klippy_dir"
 cp chelper/__init__.py chelper/stock_pkginit.py
+if [[ ! "$2" == nopatch ]]; then
 for i in ../patches/*.patch; do
 	echo "Applying Patch \"$(basename $i)\""
 	if ! patch -p1 < "$i"; then
@@ -11,4 +12,5 @@ for i in ../patches/*.patch; do
 		exit 2
 	fi
 done
+fi
 popd

@@ -6,6 +6,8 @@ Requiremets:
 * libusb and apropriated headers
 * Python 3.8 or newer
 
+**WARNING**: This README is outdated, and may contain lies
+
 USAGE:
 From the root of this repo:
 1. run `bin/get-sources.sh` to download klipper sources, and extract klippy from them

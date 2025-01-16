@@ -4,5 +4,5 @@ inputs: {}
 oututs: {}
 runs:
   using: 'docker'
-  image: 'docker://ghcr.io/laikulo/klippy-tooling/repackager:laikulo-klipper'
+  image: 'docker://ghcr.io/laikulo/kalico-tooling/repackager:main'
   args: []
