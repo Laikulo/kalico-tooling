@@ -1,0 +1,4 @@
+* Come up with a better way to deal with pyproject, since Kalico provides one
+* Rework patches to align with kalico, if needed
+* Make GH app and grant perms for auto-rebase
+* Port my personal commits

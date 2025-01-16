@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import ast
-from pprint import pp
+from pprint import pprint as pp
 
 import pathlib
 import difflib
@@ -10,11 +10,11 @@ import logging
 
 from glob import glob
 
-from typing import List
+from typing import List, Optional
 
 import sys
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 top_level_py = [ pathlib.Path(f).stem for f in glob('klippy/*.py') ]
 top_level_modules = top_level_py + [ pathlib.Path(f).parent.stem for f in glob('klippy/*/__init__.py') ]
@@ -36,38 +36,72 @@ class ImportRewriter(ast.NodeTransformer):
         return self._process_import(node)
 
     def _process_import(self, node):
-        if self.is_klippy(node, self.__depth):
-            new_nodes = []
-            package_names = {}
-            for node_name in node.names:
-                segments = node_name.name.split('.')
-                if len(segments) == 1:
-                    if type(node) == ast.ImportFrom and node.module:
-                        relative_pkg = node.module
-                    else:
-                        relative_pkg = ''
-                    relative_name = node_name.name
-                else:
-                    relative_pkg = ".".join(segments[:-1])
-                    relative_name = segments[-1]
-                    self.modifiedImports.add((node_name.name, relative_name))
-
-                if relative_pkg not in package_names:
-                    package_names[relative_pkg] = [relative_name]
-                else:
-                    package_names[relative_pkg].append(relative_name)
-
-            for relative_pkg in package_names:
-                new_nodes.append(ast.ImportFrom(
-                        module = relative_pkg,
-                        names = [ ast.alias(n) for n in package_names[relative_pkg] ],
-                        level = self.__depth
-                        ))
-            self.__mod_change_list.add((node, tuple(new_nodes)))
-            logging.info(f"Rewrote an import at {node.lineno}: {ast.unparse(node)} -> {ast.unparse(new_nodes)}")
-            return new_nodes
-        else:
+        if not self.contains_klippy(node, self.__depth):
             return node
+        module : Optional[str]
+        klippy_names : List[ast.alias] = []
+        python_names : List[ast.alias] = []
+        if type(node) == ast.ImportFrom:
+            module = node.module
+        else:
+            module = None
+        for imported_name in node.names:
+            if self.name_is_klippy(imported_name, self.__depth):
+                klippy_names.append(imported_name)
+            else:
+                python_names.append(imported_name)
+
+        # Now that we have the names, we need to group up the klippy ones, as each module gets its own import
+        klippy_imports = {}
+
+        for klippy_name in klippy_names:
+            name_segments = klippy_name.name.split(".")
+            if len(name_segments) == 1:
+                # Only a single segment, Don't need to split because of the name
+                name_pkg = module or ''
+                name_mod = name_segments[0]
+            else:
+                name_pkg = ".".join(name_segments[:-1])
+                name_mod = name_segments[-1]
+                # Track this modification, we'll have to adjust things because of it
+                self.modifiedImports.add((klippy_name.name, name_mod))
+
+            if name_pkg not in klippy_imports:
+                klippy_imports[name_pkg] = []
+
+            klippy_imports[name_pkg].append(name_mod)
+        new_nodes = []
+        if module:
+            if python_names:
+                new_nodes.append(ast.ImportFrom(module, python_names, self.__depth))
+        else:
+            if python_names:
+                new_nodes.append(ast.Import(python_names))
+
+        for im_pkg, im_names in klippy_imports.items():
+            new_nodes.append(ast.ImportFrom(
+                im_pkg,
+                [ ast.alias(n) for n in im_names ],
+                self.__depth
+            ))
+
+        self.__mod_change_list.add((node, tuple(new_nodes)))
+        logging.info(f"Rewrote an import at {node.lineno}: {ast.unparse(node)} -> {ast.unparse(new_nodes)}")
+
+    def contains_klippy(self, node, depth) -> bool:
+        """
+        Returns true if any imported names are from klippy
+        """
+        if type(node) == ast.ImportFrom:
+            if node.level == 0 and node.module is not None and node.module.split(".")[0] in self.__top_level_names:
+                return True
+        for name in node.names:
+            if self.name_is_klippy(name, depth):
+                return True
+        return False
+
+    def name_is_klippy(self, name, depth):
+        return name.name.split('.')[0] in self.__top_level_names
 
     def is_klippy(self, node, depth):
         klippy: Optional[bool] = None
