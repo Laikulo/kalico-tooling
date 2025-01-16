@@ -4,7 +4,7 @@
 
 import logging
 
-import klippy.chelper .builder as builder
+import klippy.chelper.builder as builder
 
 logging.basicConfig(level=logging.DEBUG)
 
